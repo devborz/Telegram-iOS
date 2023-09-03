@@ -29,12 +29,17 @@ public final class StoryPeerListComponent: Component {
     public final class AnimationHint {
         let duration: Double?
         let allowAvatarsExpansionUpdated: Bool
+        let openStoriesOnOverscroll: Bool
         let bounce: Bool
         let disableAnimations: Bool
         
-        public init(duration: Double?, allowAvatarsExpansionUpdated: Bool, bounce: Bool, disableAnimations: Bool) {
+        public init(duration: Double?,
+                    allowAvatarsExpansionUpdated: Bool,
+                    openStoriesOnOverscroll: Bool,
+                    bounce: Bool, disableAnimations: Bool) {
             self.duration = duration
             self.allowAvatarsExpansionUpdated = allowAvatarsExpansionUpdated
+            self.openStoriesOnOverscroll = openStoriesOnOverscroll
             self.bounce = bounce
             self.disableAnimations = disableAnimations
         }
@@ -537,6 +542,8 @@ public final class StoryPeerListComponent: Component {
                 self.updateScrolling(transition: .immediate)
             }
         }
+        
+        private var currentOpenStoriesOnOverscroll: Bool = false
                 
         private func updateScrolling(transition: Transition) {
             guard let component = self.component, let itemLayout = self.itemLayout else {
@@ -759,6 +766,7 @@ public final class StoryPeerListComponent: Component {
                 expandBoundsFraction = 0.0
             }
             
+            
             /*let blurRadius: CGFloat = collapsedState.sideAlphaFraction * 0.0 + (1.0 - collapsedState.sideAlphaFraction) * 14.0
             if blurRadius == 0.0 {
                 self.sharedBlurEffect = nil
@@ -881,7 +889,14 @@ public final class StoryPeerListComponent: Component {
                 let minimizedMaxItemScale: CGFloat = (24.0 + 4.0) / 52.0
                 
                 let overscrollScaleFactor: CGFloat
-                if index == overscrollFocusIndex {
+                
+                let animationHint = transition.userData(AnimationHint.self)
+                
+                if let animationHint {
+                    self.currentOpenStoriesOnOverscroll = animationHint.openStoriesOnOverscroll
+                }
+                
+                if index == overscrollFocusIndex && self.currentOpenStoriesOnOverscroll {
                     overscrollScaleFactor = 1.0
                 } else {
                     overscrollScaleFactor = 0.0

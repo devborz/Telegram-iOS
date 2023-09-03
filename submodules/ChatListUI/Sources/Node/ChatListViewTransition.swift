@@ -164,7 +164,7 @@ func preparedChatListNodeViewTransition(from fromView: ChatListNodeView?, to toV
         var fromEmptyView: Bool
         fromEmptyView = false
         var animateCrossfade: Bool
-        animateCrossfade = false
+        animateCrossfade = true
         if let fromView = fromView {
             var wasSingleHeader = false
             if fromView.filteredEntries.count == 1, case .HeaderEntry = fromView.filteredEntries[0] {

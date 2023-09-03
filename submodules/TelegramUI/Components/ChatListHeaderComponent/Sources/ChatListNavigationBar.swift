@@ -165,6 +165,7 @@ public final class ChatListNavigationBar: Component {
         private var currentLayout: CurrentLayout?
         private var rawScrollOffset: CGFloat?
         private var currentAllowAvatarsExpansion: Bool = false
+        private var currentOpenStoriesOnOverscroll: Bool = false
         public private(set) var clippedScrollOffset: CGFloat?
         
         public var deferScrollApplication: Bool = false
@@ -215,16 +216,19 @@ public final class ChatListNavigationBar: Component {
         
         public func applyCurrentScroll(transition: Transition) {
             if let rawScrollOffset = self.rawScrollOffset, self.hasDeferredScrollOffset {
-                self.applyScroll(offset: rawScrollOffset, allowAvatarsExpansion: self.currentAllowAvatarsExpansion, transition: transition)
+                self.applyScroll(offset: rawScrollOffset, allowAvatarsExpansion: self.currentAllowAvatarsExpansion, openStoriesOnOverscroll: self.currentOpenStoriesOnOverscroll, transition: transition)
             }
         }
         
-        public func applyScroll(offset: CGFloat, allowAvatarsExpansion: Bool, forceUpdate: Bool = false, transition: Transition) {
+        public func applyScroll(offset: CGFloat, allowAvatarsExpansion: Bool,
+                                openStoriesOnOverscroll: Bool,
+                                forceUpdate: Bool = false, transition: Transition) {
             let transition = transition
             
             self.rawScrollOffset = offset
             let allowAvatarsExpansionUpdated = self.currentAllowAvatarsExpansion != allowAvatarsExpansion
             self.currentAllowAvatarsExpansion = allowAvatarsExpansion
+            self.currentOpenStoriesOnOverscroll = openStoriesOnOverscroll
             
             if self.deferScrollApplication && !forceUpdate {
                 self.hasDeferredScrollOffset = true
@@ -388,6 +392,7 @@ public final class ChatListNavigationBar: Component {
                 transition: headerTransition.withUserData(StoryPeerListComponent.AnimationHint(
                     duration: animationDuration,
                     allowAvatarsExpansionUpdated: allowAvatarsExpansionUpdated && allowAvatarsExpansion,
+                    openStoriesOnOverscroll: openStoriesOnOverscroll,
                     bounce: transition.animation.isImmediate,
                     disableAnimations: animationHint?.disableStoriesAnimations ?? false
                 )),
@@ -616,7 +621,7 @@ public final class ChatListNavigationBar: Component {
             
             if uploadProgressUpdated || storySubscriptionsUpdated {
                 if let rawScrollOffset = self.rawScrollOffset {
-                    self.applyScroll(offset: rawScrollOffset, allowAvatarsExpansion: self.currentAllowAvatarsExpansion, forceUpdate: true, transition: transition)
+                    self.applyScroll(offset: rawScrollOffset, allowAvatarsExpansion: self.currentAllowAvatarsExpansion, openStoriesOnOverscroll: false, forceUpdate: true, transition: transition)
                 }
             }
             

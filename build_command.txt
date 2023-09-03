@@ -1,0 +1,7 @@
+python3 build-system/Make/Make.py \
+    --cacheDir="$HOME/telegram-bazel-cache" \
+    generateProject \
+    --configurationPath=build-system/config.json \
+    --disableProvisioningProfiles \
+    --disableExtensions \
+    --xcodeManagedCodesigning

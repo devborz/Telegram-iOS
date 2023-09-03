@@ -1759,6 +1759,7 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
     private var tempNavigationScrollingTransition: ContainedViewLayoutTransition?
     
     private var allowOverscrollStoryExpansion: Bool = false
+    private var openStoriesOnOverscroll: Bool = false
     private var currentOverscrollStoryExpansionTimestamp: Double?
     
     private var allowOverscrollItemExpansion: Bool = false
@@ -1813,6 +1814,9 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         self.backgroundColor = presentationData.theme.chatList.backgroundColor
         
         self.addSubnode(self.mainContainerNode)
+        self.addSubnode(self.archiveAnimationNode)
+        
+        self.archiveAnimationNode.delegate = self
         
         self.mainContainerNode.contentOffsetChanged = { [weak self] offset, listView in
             self?.contentOffsetChanged(offset: offset, listView: listView, isPrimary: true)
@@ -1912,6 +1916,11 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         self.view.addGestureRecognizer(inlineContentPanRecognizer)
     }
     
+    let archiveAnimationNode: ArchiveAnimationNode = {
+        let node = ArchiveAnimationNode()
+        return node
+    }()
+    
     override func didLoad() {
         super.didLoad()
         
@@ -1919,6 +1928,7 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         self.tapRecognizer = tapRecognizer
         self.view.addGestureRecognizer(tapRecognizer)
         tapRecognizer.isEnabled = false
+
     }
     
     @objc private func tapGesture(_ recognizer: UITapGestureRecognizer) {
@@ -2098,6 +2108,8 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         }
     }
     
+    
+    // TODO: - Check
     private func updateNavigationScrolling(navigationHeight: CGFloat, transition: ContainedViewLayoutTransition) {
         var mainOffset: CGFloat
         if let contentOffset = self.mainContainerNode.contentOffset, case let .known(value) = contentOffset {
@@ -2144,12 +2156,28 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
                 }
             }
         }
-        
         if let navigationBarComponentView = self.navigationBarView.view as? ChatListNavigationBar.View {
-            navigationBarComponentView.applyScroll(offset: offset, allowAvatarsExpansion: allowAvatarsExpansion, forceUpdate: false, transition: Transition(transition).withUserData(ChatListNavigationBar.AnimationHint(
+            var value = offset
+        
+            if !self.allowOverscrollStoryExpansion && !self.hasVisibleStories() && value < 0 {
+                value = 0
+            } else if !self.allowOverscrollStoryExpansion && self.hasVisibleStories() && value < -83 {
+                value = -83 - (-value - 83) / 4
+            }
+            navigationBarComponentView.applyScroll(offset: value, allowAvatarsExpansion: allowAvatarsExpansion, openStoriesOnOverscroll: self.openStoriesOnOverscroll, forceUpdate: false, transition: Transition(transition).withUserData(ChatListNavigationBar.AnimationHint(
                 disableStoriesAnimations: self.tempDisableStoriesAnimations,
                 crossfadeStoryPeers: false
             )))
+            
+            var archiveNodeFrame = self.archiveAnimationNode.frame
+          
+            archiveNodeFrame.origin.y = navigationHeight
+            if self.archiveAnimationNode.mode == .animateArchive {
+                archiveNodeFrame.size.height = abs(offset)
+            } else {
+                archiveNodeFrame.size.height = abs(value - offset)
+            }
+            self.archiveAnimationNode.updateFrame(frame: archiveNodeFrame, transition: transition)
         }
         
         let mainDelta: CGFloat
@@ -2158,7 +2186,18 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         } else {
             mainDelta = 0.0
         }
+        
         transition.updateSublayerTransformOffset(layer: self.mainContainerNode.layer, offset: CGPoint(x: 0.0, y: -mainDelta))
+    }
+    
+    func hasVisibleStories() -> Bool {
+        var hasStories = false
+        if let controller = self.controller,
+            let storySubscriptions = controller.orderedStorySubscriptions {
+            hasStories = shouldDisplayStoriesInChatListHeader(storySubscriptions: storySubscriptions,
+                                    isHidden: controller.location == .chatList(groupId: .archive))
+        }
+        return hasStories
     }
     
     func requestNavigationBarLayout(transition: Transition) {
@@ -2206,6 +2245,8 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         insets.top += navigationBarHeight
         insets.left += layout.safeInsets.left
         insets.right += layout.safeInsets.right
+        
+        self.archiveAnimationNode.frame = CGRect(x: 0, y: 0, width: layout.size.width, height: 0)
         
         if let toolbar = self.toolbar {
             var tabBarHeight: CGFloat
@@ -2415,10 +2456,11 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
     
     func willScrollToTop() {
         if let navigationBarComponentView = self.navigationBarView.view as? ChatListNavigationBar.View {
-            navigationBarComponentView.applyScroll(offset: 0.0, allowAvatarsExpansion: false, transition: Transition(animation: .curve(duration: 0.3, curve: .slide)))
+            navigationBarComponentView.applyScroll(offset: 0.0, allowAvatarsExpansion: false, openStoriesOnOverscroll: false, transition: Transition(animation: .curve(duration: 0.3, curve: .slide)))
         }
     }
     
+    // TODO: - Implement archive animation changing
     private func contentOffsetChanged(offset: ListViewVisibleContentOffset, listView: ListView, isPrimary: Bool) {
         guard let containerLayout = self.containerLayout else {
             return
@@ -2427,10 +2469,8 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
         
         if listView.isDragging {
             var overscrollSelectedId: EnginePeer.Id?
-            var overscrollHiddenChatItemsAllowed = false
             if let controller = self.controller, let componentView = controller.chatListHeaderView(), let storyPeerListView = componentView.storyPeerListView() {
                 overscrollSelectedId = storyPeerListView.overscrollSelectedId
-                overscrollHiddenChatItemsAllowed = storyPeerListView.overscrollHiddenChatItemsAllowed
             }
             
             if let chatListNode = listView as? ChatListNode {
@@ -2453,48 +2493,12 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
                             self.currentOverscrollStoryExpansionTimestamp = nil
                             self.allowOverscrollItemExpansion = false
                             self.currentOverscrollItemExpansionTimestamp = nil
-                            HapticFeedback().tap()
                             
+                            HapticFeedback().tap()
                             controller.openStories(peerId: peerId)
                         }
                     }
                 } else {
-                    if !overscrollHiddenChatItemsAllowed {
-                        var manuallyAllow = false
-                        
-                        if isPrimary {
-                            if let storySubscriptions = controller.orderedStorySubscriptions, shouldDisplayStoriesInChatListHeader(storySubscriptions: storySubscriptions, isHidden: controller.location == .chatList(groupId: .archive)) {
-                            } else {
-                                manuallyAllow = true
-                            }
-                        } else {
-                            manuallyAllow = true
-                        }
-                        
-                        if manuallyAllow, case let .known(value) = offset, value + listView.tempTopInset <= -40.0 {
-                            overscrollHiddenChatItemsAllowed = true
-                        }
-                    }
-                
-                    if overscrollHiddenChatItemsAllowed {
-                        if self.allowOverscrollItemExpansion {
-                            let timestamp = CACurrentMediaTime()
-                            if let _ = self.currentOverscrollItemExpansionTimestamp {
-                            } else {
-                                self.currentOverscrollItemExpansionTimestamp = timestamp
-                            }
-                            
-                            if let currentOverscrollItemExpansionTimestamp = self.currentOverscrollItemExpansionTimestamp, currentOverscrollItemExpansionTimestamp <= timestamp - 0.0 {
-                                self.allowOverscrollItemExpansion = false
-                                
-                                if isPrimary {
-                                    self.mainContainerNode.currentItemNode.revealScrollHiddenItem()
-                                } else {
-                                    self.inlineStackContainerNode?.currentItemNode.revealScrollHiddenItem()
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -2534,18 +2538,78 @@ final class ChatListControllerNode: ASDisplayNode, UIGestureRecognizerDelegate {
                 self.allowOverscrollStoryExpansion = false
             }
         }
+        self.openStoriesOnOverscroll = self.allowOverscrollStoryExpansion
         self.allowOverscrollItemExpansion = true
     }
     
     private func endedInteractiveDragging(listView: ListView, isPrimary: Bool) {
+        var overscrollSelectedId: EnginePeer.Id?
+        var overscrollHiddenChatItemsAllowed = false
+        if let controller = self.controller, let componentView = controller.chatListHeaderView(), let storyPeerListView = componentView.storyPeerListView() {
+            overscrollSelectedId = storyPeerListView.overscrollSelectedId
+            overscrollHiddenChatItemsAllowed = storyPeerListView.overscrollHiddenChatItemsAllowed
+        }
+        
+        if let chatListNode = listView as? ChatListNode {
+            if chatListNode.hasItemsToBeRevealed() {
+                overscrollSelectedId = nil
+            }
+        }
+        
+        if let controller = self.controller {
+            if overscrollSelectedId == nil {
+                if !overscrollHiddenChatItemsAllowed {
+                    var manuallyAllow = false
+                    
+                    if isPrimary {
+                        if let storySubscriptions = controller.orderedStorySubscriptions, shouldDisplayStoriesInChatListHeader(storySubscriptions: storySubscriptions, isHidden: controller.location == .chatList(groupId: .archive)) {
+                        } else {
+                            manuallyAllow = true
+                        }
+                    } else {
+                        manuallyAllow = true
+                    }
+                    
+                    if manuallyAllow, self.archiveAnimationNode.mode == .release {
+                        overscrollHiddenChatItemsAllowed = true
+                    }
+                }
+            
+                if overscrollHiddenChatItemsAllowed {
+                    if self.allowOverscrollItemExpansion {
+                        let timestamp = CACurrentMediaTime()
+                        if let _ = self.currentOverscrollItemExpansionTimestamp {
+                        } else {
+                            self.currentOverscrollItemExpansionTimestamp = timestamp
+                        }
+                        
+                        if let currentOverscrollItemExpansionTimestamp = self.currentOverscrollItemExpansionTimestamp, currentOverscrollItemExpansionTimestamp <= timestamp - 0.0 {
+                            self.allowOverscrollItemExpansion = false
+                            
+                            if isPrimary {
+                                self.mainContainerNode.currentItemNode.revealScrollHiddenItem()
+                                if case let .known(value) = self.mainContainerNode.currentItemNode.visibleContentOffset() {
+                                    self.archiveAnimationNode.mode = .animateArchive
+                                    self.archiveAnimationNode.currentTopInset = self.mainContainerNode.tempTopInset
+                                    self.archiveAnimationNode.currentOffset = abs(value)
+                                    self.mainContainerNode.tempTopInset -= 76
+                                }
+                            } else {
+                                self.inlineStackContainerNode?.currentItemNode.revealScrollHiddenItem()
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if isPrimary {
-            self.allowOverscrollStoryExpansion = false
             self.currentOverscrollStoryExpansionTimestamp = nil
         }
-        self.allowOverscrollItemExpansion = false
         self.currentOverscrollItemExpansionTimestamp = nil
+        self.allowOverscrollItemExpansion = false
     }
     
+    // TODO: - Implement archive position checking
     private func contentScrollingEnded(listView: ListView, isPrimary: Bool) -> Bool {
         if !isPrimary || self.inlineStackContainerNode == nil {
         } else {
@@ -2720,4 +2784,11 @@ func shouldDisplayStoriesInChatListHeader(storySubscriptions: EngineStorySubscri
         }
     }
     return false
+}
+
+extension ChatListControllerNode: ArchiveAnimationNodeDelegate {
+    
+    func changeTopInset(inset: CGFloat) {
+        self.mainContainerNode.tempTopInset = inset
+    }
 }

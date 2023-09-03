@@ -1,0 +1,15 @@
+{
+	"bundle_id": "org.devborz.Telegram",
+	"api_id": "24529431",
+	"api_hash": "7730bfb12fa33ce60c29db5d03b6620e",
+	"team_id": "T5LKB74WC3",
+	"app_center_id": "0",
+	"is_internal_build": "true",
+	"is_appstore_build": "false",
+	"appstore_id": "0",
+	"app_specific_url_scheme": "tg",
+	"premium_iap_product_id": "",
+	"enable_siri": false,
+	"enable_icloud": false,
+	"enable_watch": false
+}

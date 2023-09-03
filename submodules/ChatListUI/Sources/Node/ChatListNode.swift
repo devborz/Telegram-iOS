@@ -2337,16 +2337,16 @@ public final class ChatListNode: ListView {
                     disableAnimations = false
                 }
                 if hideArchivedFolderByDefault && previousState.hiddenItemShouldBeTemporaryRevealed != state.hiddenItemShouldBeTemporaryRevealed && doesIncludeArchive {
-                    disableAnimations = false
+                    disableAnimations = state.hiddenItemShouldBeTemporaryRevealed
                 }
                 if didIncludeHiddenByDefaultArchive != doesIncludeHiddenByDefaultArchive {
                     disableAnimations = false
                 }
                 if previousState.hiddenItemShouldBeTemporaryRevealed != state.hiddenItemShouldBeTemporaryRevealed && doesIncludeHiddenThread {
-                    disableAnimations = false
+                    disableAnimations = true
                 }
                 if didIncludeHiddenThread != doesIncludeHiddenThread {
-                    disableAnimations = false
+                    disableAnimations = true
                 }
                 if didIncludeNotice != doesIncludeNotice {
                     disableAnimations = false
@@ -3318,7 +3318,6 @@ public final class ChatListNode: ListView {
     private var previousStoriesInset: CGFloat?
     
     public func updateLayout(transition: ContainedViewLayoutTransition, updateSizeAndInsets: ListViewUpdateSizeAndInsets, visibleTopInset: CGFloat, originalTopInset: CGFloat, storiesInset: CGFloat, inlineNavigationLocation: ChatListControllerLocation?, inlineNavigationTransitionFraction: CGFloat) {
-        //print("inset: \(updateSizeAndInsets.insets.top)")
         
         var highlightedLocation: ChatListHighlightedLocation?
         if case let .forum(peerId) = inlineNavigationLocation {
